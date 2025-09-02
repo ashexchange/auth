@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ashexchange/auth"
 	"github.com/golang-jwt/jwt/v5"
@@ -12,9 +11,8 @@ import (
 )
 
 type authenticator struct {
-	rc         redis.UniversalClient
-	codec      *Codec
-	expiration time.Duration
+	rc    redis.UniversalClient
+	codec *Codec
 }
 
 var _ auth.Authenticator = (*authenticator)(nil)
@@ -47,16 +45,8 @@ func WithBase64Key(key string, opts ...CodecOption) Option {
 	})
 }
 
-func Expiration(d time.Duration) Option {
-	return optionFunc(func(a *authenticator) {
-		if d > 0 {
-			a.expiration = d
-		}
-	})
-}
-
 func NewAuthorizator(rc redis.UniversalClient, opts ...Option) (auth.Authenticator, error) {
-	a := &authenticator{rc: rc, expiration: 24 * time.Hour}
+	a := &authenticator{rc: rc}
 	for _, o := range opts {
 		o.apply(a)
 	}
@@ -78,14 +68,14 @@ func (a *authenticator) Auth(ctx context.Context, token string) (auth.Claims, er
 		return nil, err
 	}
 
-	if err = a.renewToken(ctx, token, claims.UID, claims.Platform); err != nil {
+	if err = a.check(ctx, token, claims.UID, claims.Platform); err != nil {
 		return nil, err
 	}
 
 	return &CustomClaims{UID: claims.UID}, nil
 }
 
-func (a *authenticator) renewToken(ctx context.Context, token string, userId int64, platform string) error {
+func (a *authenticator) check(ctx context.Context, token string, userId int64, platform string) error {
 	key := fmt.Sprintf("account:token:%d", userId)
 	result, err := a.rc.HGet(ctx, key, platform).Result()
 	if err != nil {
@@ -95,8 +85,6 @@ func (a *authenticator) renewToken(ctx context.Context, token string, userId int
 	if len(result) == 0 || result != token {
 		return auth.ErrTokenExpired
 	}
-
-	a.rc.Expire(ctx, key, a.expiration)
 
 	return nil
 }
