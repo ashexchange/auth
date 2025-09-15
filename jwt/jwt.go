@@ -72,7 +72,10 @@ func (a *authenticator) Auth(ctx context.Context, token string) (auth.Claims, er
 		return nil, err
 	}
 
-	return &CustomClaims{UID: claims.UID}, nil
+	return &CustomClaims{
+		UID:      claims.UID,
+		Platform: claims.Platform,
+	}, nil
 }
 
 func (a *authenticator) check(ctx context.Context, token string, userId int64, platform string) error {
